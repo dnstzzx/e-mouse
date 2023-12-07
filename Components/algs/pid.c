@@ -1,9 +1,9 @@
 #include "string.h"
 #include "pid.h"
-#include "pid_tracer.h"
 #include "basic_algs.h"
 #include "app_entry.h"
 #include "math.h"
+#include "stm32f4xx_hal.h"
 #include "stdio.h"
 
 void pid_init(dn_pid_t* pid, dn_pid_param_t* param){
@@ -32,10 +32,12 @@ float pid_update(dn_pid_t* pid, float target, float measurement){
     pid->set = target;
     pid->last_err = pid->err;
     pid->err = target - measurement;
-    if ((pid->param.err_limit != 0) && (fabs(pid->err) > pid->param.err_limit))
-        return 0;
+    if(pid->param.err_limit){
+        abs_limit(&pid->err, pid->param.err_limit);
+    }
 
     pid->pout = pid->param.kp * pid->err;
+    pid->iout *= 0.98;
     pid->iout += pid->param.ki * pid->err;
     pid->dout = pid->param.kd * (pid->err - pid->last_err);
 
@@ -44,11 +46,11 @@ float pid_update(dn_pid_t* pid, float target, float measurement){
     abs_limit(&(pid->out), pid->param.out_limit);
 
     float rst = pid->out;
-    printf("%f %f %f\n", measurement, target - measurement, rst);
-#ifdef APP_ENTRY_ENABEL_PID_TRACER
+    //printf("%f %f %f\n", measurement, target - measurement, rst);
+    #ifdef APP_ENTRY_ENABEL_PID_TRACER
     if (pid->tracer_callback != NULL)
         pid->tracer_callback(pid->tracer_cbk_param, target, measurement, rst);
-#endif
+    #endif
     return rst;
 }
 

@@ -3,14 +3,15 @@
 #include "stddef.h"
 #include "tim.h"
 #include "pid.h"
+#include "stdbool.h"
 
 #define BSP_MOTOR_COUNT     (2)
-#define BSP_MOTOR_RATE      (100 * 4)
-#define BSP_MOTOR_TASK_HZ   (100)
+#define BSP_MOTOR_RATE      (100 * 4 * 7)
+#define BSP_MOTOR_TASK_HZ   (50)
 
 typedef struct{
     uint32_t encoder_count;
-    volatile uint32_t encoder_ovf_count; // overflow count
+    volatile int32_t encoder_ovf_count; // overflow count
 } bsp_motor_encoder_state_t;
 
 typedef enum{
@@ -20,8 +21,9 @@ typedef enum{
 } bsp_motor_ctrl_mode_t;
 
 typedef struct{
+    bool                        inverse;
     float                       target_speed;
-    int32_t                     target_pos;
+    float                       target_pos;
 
     const uint8_t               pwm1_channel;
     const uint8_t               pwm2_channel;
@@ -54,8 +56,12 @@ static inline float bsp_motor_get_speed(bsp_motor_t *dev){
     return dev->current_speed;
 }
 
-static inline float bsp_motor_get_pos(bsp_motor_t *dev){
+static inline int32_t bsp_motor_get_pos(bsp_motor_t *dev){
     return dev->current_pos;
+}
+
+static inline void bsp_motor_reset_pos(bsp_motor_t *dev){
+    dev->current_pos = 0;
 }
 
 static inline void bsp_motor_set_speed(bsp_motor_t *motor, float speed){
@@ -66,7 +72,7 @@ static inline void bsp_motor_set_ctrl_mode(bsp_motor_t *motor, bsp_motor_ctrl_mo
     motor->ctrl_mode = mode;
 }
 
-static inline void bsp_motor_set_pos(bsp_motor_t *motor, int32_t pos){
+static inline void bsp_motor_set_pos(bsp_motor_t *motor, float pos){
     motor->target_pos = pos;
 }
 

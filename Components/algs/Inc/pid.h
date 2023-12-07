@@ -1,5 +1,6 @@
 #pragma once
 #include "app_entry.h"
+#include <stdbool.h>
 
 typedef struct{
     float kp,ki,kd;
@@ -38,3 +39,12 @@ float pid_update(dn_pid_t *pid, float target, float measurement);
 #ifdef APP_ENTRY_ENABEL_PID_TRACER
 void pid_set_tracer_cbk(dn_pid_t *pid, pid_tracer_callback_t callback, void *cbk_param);
 #endif
+
+// #define pid_init_lazy(pid, param) \
+//     do{ \
+//         static bool inited = false; \
+//         if(!inited){ \
+//             pid_init(pid, param);\
+//             inited = true;  \
+//         }\
+//     } while(0);

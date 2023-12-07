@@ -1,6 +1,7 @@
 #include "bsp_motor.h"
 #include "tim.h"
 #include "string.h"
+#include "math.h"
 #include "bsp_task.h"
 
 #define MOTOR1_PWM1_TTM     (&htim8)
@@ -20,6 +21,7 @@
 
 bsp_motor_t bsp_motors[BSP_MOTOR_COUNT] = {
     {
+        .inverse = true,
         .target_speed = 0.0f,
         .target_pos = 0,
         .pwm1_channel = MOTOR1_PWM1_CHANNEL,
@@ -35,6 +37,7 @@ bsp_motor_t bsp_motors[BSP_MOTOR_COUNT] = {
         .speed_pid = {}
     },
     {
+        .inverse = false,
         .target_speed = 0.0f,
         .target_pos = 0,
         .pwm1_channel = MOTOR2_PWM1_CHANNEL,
@@ -51,6 +54,32 @@ bsp_motor_t bsp_motors[BSP_MOTOR_COUNT] = {
     },
 };
 
+// static const dn_pid_param_t default_speed_pid = {
+//     .kp = 0.18f,
+//     .ki = 0.008f,
+//     .kd = 0.000f,
+//     .err_limit = 10,
+//     .integral_limit = 1,
+//     .out_limit = 0.45
+// };
+static const dn_pid_param_t default_speed_pid = {
+    .kp = 0.3f,
+    .ki = 0.05f,
+    .kd = 0.15f,
+    .err_limit = 10,
+    .integral_limit = 1,
+    .out_limit = 0.8
+};
+
+static const dn_pid_param_t default_pos_pid = {
+    .kp = 8.0f,
+    .ki = 0.002f,
+    .kd = 0.2f,
+    .err_limit = 2,
+    .integral_limit = 1,
+    .out_limit = 5
+};
+
 #define _for_each_dev(opr) \
     for(int _i=0;_i<BSP_MOTOR_COUNT;_i++){ \
         bsp_motor_t *dev = &bsp_motors[_i]; opr; \
@@ -61,6 +90,7 @@ inline static uint32_t bsp_motor_read_encoder(bsp_motor_t *dev){
 }
 
 void bsp_motor_set_pwm(bsp_motor_t *motor, float pwm){
+    if(motor->inverse)  pwm = -pwm;
     if(pwm >= 0){
         __HAL_TIM_SET_COMPARE(motor->pwm1_tim, motor->pwm1_channel, pwm * MOTOR_PWM_PERIOD);
         __HAL_TIM_SET_COMPARE(motor->pwm2_tim, motor->pwm2_channel, 0);
@@ -81,6 +111,8 @@ static int32_t bsp_motor_update(bsp_motor_t *dev){
         + dev->encoder_state.encoder_count
         - dev->last_encoder_state.encoder_count;
     memcpy(&dev->last_encoder_state, &dev->encoder_state, sizeof(bsp_motor_encoder_state_t));
+    if(delta * BSP_MOTOR_TASK_HZ / 1000.0f >= 20) delta = 0;
+    if(dev->inverse)    delta *= -1;
     dev->current_pos += delta;
     dev->current_speed = delta * BSP_MOTOR_TASK_HZ / 1000.0f;
     __enable_irq();
@@ -91,11 +123,13 @@ static inline void motor_ctrl(bsp_motor_t *motor){
     bsp_motor_update(motor);
     switch(motor->ctrl_mode){
         case BSP_MOTOR_CTRL_MODE_POS:
-            motor->target_speed = pid_update(&motor->pos_pid, motor->target_pos, motor->current_pos);
+            motor->target_speed = pid_update(&motor->pos_pid, motor->target_pos, 1.0 * motor->current_pos / BSP_MOTOR_RATE);
+            if(fabs(motor->target_speed) <= 0.05)  motor->target_speed = 0.0f;
         // no break here
         case BSP_MOTOR_CTRL_MODE_SPEED:
             do{
                 float pwm = pid_update(&motor->speed_pid, motor->target_speed, motor->current_speed);
+                if(fabs(pwm) <= 0.05) pwm = 0.0f;
                 bsp_motor_set_pwm(motor, pwm);
             }while(0);
             break;
@@ -104,6 +138,9 @@ static inline void motor_ctrl(bsp_motor_t *motor){
 }
 
 void bsp_motor_task(void *param){
+    // static uint32_t last_t = 0;
+    // printf("time: %d\n", HAL_GetTick() - last_t);
+    // last_t = HAL_GetTick();
     _for_each_dev(motor_ctrl(dev));
 }
 
@@ -127,9 +164,9 @@ void bsp_motor_init(){
         HAL_TIM_Encoder_Start(dev->encoder_tim, TIM_CHANNEL_ALL);
 
         bsp_motor_set_pwm(dev, 0.0f);
-        dn_pid_param_t p = {};
-        bsp_motor_config_speed_pid(dev, &p);
-        bsp_motor_config_pos_pid(dev, &p);
+        
+        bsp_motor_config_speed_pid(dev, &default_speed_pid);
+        bsp_motor_config_pos_pid(dev, &default_pos_pid);
     )
 
     bsp_motor_t *dev;
@@ -144,7 +181,13 @@ void bsp_motor_init(){
 void HAL_TIM_PeriodElapsedCallback_motor(TIM_HandleTypeDef *htim){
     _for_each_dev(
         if(htim == dev->encoder_tim){
-            dev->encoder_state.encoder_ovf_count ++;
+            if(__HAL_TIM_GetCounter(htim) == 0){
+                dev->encoder_state.encoder_ovf_count ++;
+            }else{
+                dev->encoder_state.encoder_ovf_count --;
+            }
         }
     )
 }
+
+
