@@ -1,4 +1,5 @@
 # 智能电脑鼠高级迷宫小车
+[硬件开源地址](https://oshwhub.com/dnoo2/zhi-neng-dian-nao-shu-gao-ji-mi-)
 ![8e82b34e52f0d6c31afdf8772360ef7.jpg](https://image.lceda.cn/pullimage/OdnvftMGMK6XyXdUTu8d0OMZwZmMyBJ8NYdVKrsl.jpeg)
 
 # 需求描述
